@@ -1,4 +1,4 @@
--- Car Dealership Tycoon - Música Local (Rayfield)
+-- Car Dealership Tycoon - Música Local (Corrigido)
 -- Só você escuta | Delta / Xeno
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -25,18 +25,9 @@ local currentSound = nil
 local playlistRunning = false
 local currentIndex = 1
 
--- Funções de som
-local function getMyCar()
-    for _, car in pairs(workspace:FindFirstChild("Cars") and workspace.Cars:GetChildren() or {}) do
-        local stats = car:FindFirstChild("Stats")
-        if stats and stats:FindFirstChild("Owner") and stats.Owner.Value == LocalPlayer.Name then
-            return car
-        end
-    end
-    return nil
-end
-
+-- ==================== FUNÇÃO DE SOM CORRIGIDA ====================
 local function playMusic(id)
+    -- Para o som anterior
     if currentSound then
         currentSound:Stop()
         currentSound:Destroy()
@@ -44,24 +35,30 @@ local function playMusic(id)
     end
 
     local sound = Instance.new("Sound")
-    sound.Name = "LocalCarMusic"
+    sound.Name = "LocalCarMusic_" .. tostring(id)
     sound.SoundId = "rbxassetid://" .. tostring(id)
-    sound.Volume = 1.5
+    sound.Volume = 2 -- aumentei o volume
     sound.Looped = false
-    sound.RollOffMaxDistance = 50
-    sound.RollOffMinDistance = 10
+    sound.PlaybackSpeed = 1
+    sound.RollOffMaxDistance = 10000
+    sound.RollOffMinDistance = 10000
 
-    local car = getMyCar()
-    if car then
-        local root = car.PrimaryPart or car:FindFirstChild("Chassis") or car:FindFirstChildWhichIsA("BasePart")
-        sound.Parent = root or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) or SoundService
-    else
-        sound.Parent = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or SoundService
-    end
+    -- Parent no SoundService (mais confiável pra som local)
+    sound.Parent = SoundService
 
+    -- Força o carregamento e toca
+    sound.Loaded:Wait() -- espera o áudio carregar
     sound:Play()
+
     currentSound = sound
     print("[Música] Tocando ID:", id)
+    
+    Rayfield:Notify({
+        Title = "Tocando",
+        Content = "ID: " .. id,
+        Duration = 2
+    })
+
     return sound
 end
 
@@ -97,7 +94,10 @@ local function startPlaylist()
         local id = MusicList[currentIndex]
         local sound = playMusic(id)
 
-        sound.Ended:Connect(function()
+        -- Quando acabar, toca a próxima
+        local connection
+        connection = sound.Ended:Connect(function()
+            connection:Disconnect()
             if playlistRunning then
                 currentIndex += 1
                 playNext()
@@ -113,29 +113,24 @@ local function saveList()
         writefile(SAVE_FILE, HttpService:JSONEncode(MusicList))
         Rayfield:Notify({
             Title = "Sucesso",
-            Content = "Lista salva com sucesso!",
+            Content = "Lista salva!",
             Duration = 3
         })
     else
         Rayfield:Notify({
             Title = "Erro",
-            Content = "Seu executor não suporta salvar arquivos.",
+            Content = "Seu executor não suporta writefile",
             Duration = 4
         })
     end
 end
 
--- ========== JANELA RAYFIELD ==========
+-- ========== JANELA ==========
 local Window = Rayfield:CreateWindow({
     Name = "🎵 Música Local | CDT",
     LoadingTitle = "Car Dealership Tycoon",
     LoadingSubtitle = "Só você escuta",
-    ConfigurationSaving = {
-        Enabled = false
-    },
-    Discord = {
-        Enabled = false
-    },
+    ConfigurationSaving = { Enabled = false },
     KeySystem = false
 })
 
@@ -146,9 +141,7 @@ local InputID = TabAdd:CreateInput({
     Name = "ID da Música",
     PlaceholderText = "Cole o ID aqui...",
     RemoveTextAfterFocusLost = false,
-    Callback = function(Text)
-        -- só guarda o texto
-    end,
+    Callback = function(Text) end,
 })
 
 TabAdd:CreateButton({
@@ -159,7 +152,7 @@ TabAdd:CreateButton({
             table.insert(MusicList, tonumber(id))
             Rayfield:Notify({
                 Title = "Adicionado!",
-                Content = "ID " .. id .. " adicionado. Total: " .. #MusicList,
+                Content = "ID " .. id .. " | Total: " .. #MusicList,
                 Duration = 3
             })
         else
@@ -172,25 +165,37 @@ TabAdd:CreateButton({
     end,
 })
 
-TabAdd:CreateParagraph({
-    Title = "Como usar",
-    Content = "Cole o ID da música no campo acima e clique em Adicionar. Depois vá na aba Lista e salve."
+TabAdd:CreateButton({
+    Name = "▶ Testar este ID agora",
+    Callback = function()
+        local id = InputID.CurrentValue
+        if id and id ~= "" and tonumber(id) then
+            playlistRunning = false
+            playMusic(tonumber(id))
+        else
+            Rayfield:Notify({
+                Title = "Erro",
+                Content = "Coloque um ID válido primeiro",
+                Duration = 3
+            })
+        end
+    end,
 })
 
 -- ========== ABA 2: LISTA ==========
 local TabList = Window:CreateTab("Lista", 4483362458)
 
 local ListParagraph = TabList:CreateParagraph({
-    Title = "IDs Salvos",
-    Content = #MusicList > 0 and table.concat(MusicList, ", ") or "Nenhum ID na lista ainda."
+    Title = "IDs na Lista (" .. #MusicList .. ")",
+    Content = #MusicList > 0 and table.concat(MusicList, ", ") or "Nenhum ID ainda."
 })
 
 TabList:CreateButton({
-    Name = "🔄 Atualizar Lista",
+    Name = "🔄 Atualizar Visualização",
     Callback = function()
         ListParagraph:Set({
-            Title = "IDs Salvos (" .. #MusicList .. ")",
-            Content = #MusicList > 0 and table.concat(MusicList, ", ") or "Nenhum ID na lista ainda."
+            Title = "IDs na Lista (" .. #MusicList .. ")",
+            Content = #MusicList > 0 and table.concat(MusicList, ", ") or "Nenhum ID ainda."
         })
     end,
 })
@@ -200,24 +205,19 @@ TabList:CreateButton({
     Callback = function()
         saveList()
         ListParagraph:Set({
-            Title = "IDs Salvos (" .. #MusicList .. ")",
-            Content = #MusicList > 0 and table.concat(MusicList, ", ") or "Nenhum ID na lista ainda."
+            Title = "IDs na Lista (" .. #MusicList .. ")",
+            Content = #MusicList > 0 and table.concat(MusicList, ", ") or "Nenhum ID ainda."
         })
     end,
 })
 
 TabList:CreateButton({
-    Name = "🗑️ Limpar Toda a Lista",
+    Name = "🗑️ Limpar Lista",
     Callback = function()
         MusicList = {}
         ListParagraph:Set({
-            Title = "IDs Salvos (0)",
+            Title = "IDs na Lista (0)",
             Content = "Lista limpa."
-        })
-        Rayfield:Notify({
-            Title = "Lista limpa",
-            Content = "Todos os IDs foram removidos.",
-            Duration = 3
         })
     end,
 })
@@ -225,31 +225,21 @@ TabList:CreateButton({
 -- ========== ABA 3: PLAYLIST ==========
 local TabPlay = Window:CreateTab("Playlist", 4483362458)
 
-TabPlay:CreateParagraph({
-    Title = "Controle da Playlist",
-    Content = "A playlist toca todas as músicas da lista em ordem e depois reinicia."
-})
-
 TabPlay:CreateButton({
     Name = "▶ Iniciar Playlist",
     Callback = function()
         startPlaylist()
-        Rayfield:Notify({
-            Title = "Playlist",
-            Content = "Iniciada!",
-            Duration = 3
-        })
     end,
 })
 
 TabPlay:CreateButton({
-    Name = "⏹ Parar Playlist",
+    Name = "⏹ Parar",
     Callback = function()
         stopMusic()
         Rayfield:Notify({
-            Title = "Playlist",
-            Content = "Parada.",
-            Duration = 3
+            Title = "Parado",
+            Content = "Música parada.",
+            Duration = 2
         })
     end,
 })
@@ -257,10 +247,11 @@ TabPlay:CreateButton({
 TabPlay:CreateButton({
     Name = "⏭ Próxima Música",
     Callback = function()
-        if playlistRunning and currentSound then
+        if currentSound then
             currentSound:Stop()
-            currentIndex += 1
-            -- a função playNext vai ser chamada pelo Ended, mas forçamos
+        end
+        if #MusicList > 0 then
+            currentIndex = currentIndex + 1
             if currentIndex > #MusicList then
                 currentIndex = 1
             end
@@ -269,4 +260,4 @@ TabPlay:CreateButton({
     end,
 })
 
-print("✅ Script Rayfield carregado! Arraste a janela normalmente.")
+print("✅ Script corrigido carregado!")
